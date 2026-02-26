@@ -26,7 +26,7 @@ db_path = "database/produktivitias_db.csv"
 # GEMINI CONFIG
 # =====================================================
 
-genai.configure(api_key="AIzaSyDuqYrVzN7VgzPdNRtSNIAd3RzdBjrZfGk")
+genai.configure(api_key="AIzaSyDTngtJYZoem7DecSh0YyfsnZbIeqOr1tQ")
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 # =====================================================
@@ -136,16 +136,6 @@ if menu == "Dashboard":
             elif FCR_OPTIMAL[0] <= fcr <= FCR_OPTIMAL[1]:
                 st.success("✅ FCR optimal")
 
-            # Performance score
-            score = 0
-            if HDP_OPTIMAL[0] <= hdp <= HDP_OPTIMAL[1]:
-                score += 40
-            if FCR_OPTIMAL[0] <= fcr <= FCR_OPTIMAL[1]:
-                score += 40
-            if profit > 0:
-                score += 20
-
-            st.metric("Performance Score (0-100)", score)
 
             if st.button("🤖 Analisis AI Dashboard"):
                 prompt = f"""
@@ -349,4 +339,5 @@ elif menu == "Summary":
             )
 
     else:
+
         st.warning("Database kosong.")
