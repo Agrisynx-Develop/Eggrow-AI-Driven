@@ -115,7 +115,7 @@ if menu == "Dashboard":
             fcr = konsumsi_pakan / (jumlah_telur * berat_telur)
             hdp = (jumlah_telur / jumlah_ternak) * 100
             feed_cost = (konsumsi_pakan * harga_pakan) / (jumlah_telur * berat_telur)
-            revenue = jumlah_telur * harga_telur
+            revenue = (jumlah_telur * berat_telur ) * harga_telur
             total_feed_cost = konsumsi_pakan * harga_pakan
             profit = revenue - total_feed_cost
 
@@ -340,4 +340,5 @@ elif menu == "Summary":
             )
 
     else:
+
         st.warning("Database kosong.")
