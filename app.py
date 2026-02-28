@@ -7,10 +7,14 @@ import seaborn as sns
 import google.generativeai as genai
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+from datetime import datetime
 import re
+
 
 # =====================================================
 # CONFIGURATION
@@ -27,7 +31,7 @@ db_path = "database/produktivitias_db.csv"
 # =====================================================
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-2.5-flash")
+model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
 # =====================================================
 # NILAI STANDAR GLOBAL
@@ -115,14 +119,14 @@ if menu == "Dashboard":
             fcr = konsumsi_pakan / (jumlah_telur * berat_telur)
             hdp = (jumlah_telur / jumlah_ternak) * 100
             feed_cost = (konsumsi_pakan * harga_pakan) / (jumlah_telur * berat_telur)
-            revenue = (jumlah_telur * berat_telur ) * harga_telur
+            revenue = (jumlah_telur * berat_telur) * harga_telur
             total_feed_cost = konsumsi_pakan * harga_pakan
             profit = revenue - total_feed_cost
 
             col1, col2, col3 = st.columns(3)
             col1.metric("FCR", round(fcr, 3))
             col2.metric("HDP (%)", round(hdp, 2))
-            col3.metric("Feed Cost", format_rupiah(feed_cost))
+            col3.metric("Feed Cost / kg egg", format_rupiah(feed_cost))
             st.metric("Profit", format_rupiah(profit))
 
             # Warning system
@@ -299,46 +303,133 @@ elif menu == "Summary":
             report_text = response.text
             st.write(report_text)
 
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
-            elements = []
+            # =============================
+            # FUNGSI FOOTER
+            # =============================
+            def markdown_to_html(text):
+                # Convert **bold** menjadi <b>bold</b>
+                text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
+                return text
+            
+            def add_footer(canvas, doc):
+                canvas.saveState()
+                footer_text = f"EggRow AI System | Generated: {datetime.now().strftime('%d-%m-%Y')} | Page {doc.page}"
+                canvas.setFont("Helvetica", 8)
+                canvas.setFillColor(colors.grey)
+                canvas.drawCentredString(A4[0] / 2, 0.5 * inch, footer_text)
+                canvas.restoreState()
 
+            # =============================
+            # GENERATE PDF
+            # =============================
+
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=A4,
+                rightMargin=40,
+                leftMargin=40,
+                topMargin=60,
+                bottomMargin=60
+            )
+
+            elements = []
             styles = getSampleStyleSheet()
 
-            # Style custom justify
-            justify_style = ParagraphStyle(
-            name='Justify',
-            parent=styles['Normal'],
-            alignment=TA_JUSTIFY,
-            fontSize=11,
-            leading=16,
-            spaceAfter=10
-)
+            # ===== CUSTOM STYLES =====
 
-            title_style = styles["Title"]
+            title_style = ParagraphStyle(
+                name="TitleStyle",
+                parent=styles["Title"],
+                alignment=TA_CENTER,
+                fontSize=18,
+                spaceAfter=20
+            )
+
+            heading_style = ParagraphStyle(
+                name="HeadingStyle",
+                parent=styles["Heading2"],
+                fontSize=14,
+                spaceBefore=12,
+                spaceAfter=6
+            )
+
+            subheading_style = ParagraphStyle(
+                name="SubHeadingStyle",
+                parent=styles["Heading3"],
+                fontSize=12,
+                spaceBefore=8,
+                spaceAfter=4
+            )
+
+            body_style = ParagraphStyle(
+                name="BodyStyle",
+                parent=styles["Normal"],
+                alignment=TA_JUSTIFY,
+                fontSize=11,
+                leading=16,
+                spaceAfter=8
+            )
+
+            # ===== TITLE =====
 
             elements.append(Paragraph("LAPORAN EXECUTIVE AYAM LAYER", title_style))
+            elements.append(HRFlowable(width="100%", thickness=1, color=colors.black))
             elements.append(Spacer(1, 0.3 * inch))
-            elements.append(HRFlowable(width="100%", thickness=1, ))
-            elements.append(Spacer(1, 0.3 * inch))
 
-            # Pecah teks berdasarkan baris kosong
-            paragraphs = report_text.split("\n")
+            # ===== FORMAT TEKS OTOMATIS =====
 
-            for para in paragraphs:
-                if para.strip() != "":
-                    elements.append(Paragraph(para.strip(), justify_style))
-                    elements.append(Spacer(1, 0.2 * inch))
+            lines = report_text.split("\n")
 
-            doc.build(elements)
+            for line in lines:
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                # 1️⃣ Convert semua markdown bold terlebih dahulu
+                line = markdown_to_html(line)
+
+                # =============================
+                # BULLET LIST
+                # =============================
+                if line.startswith("•") or line.startswith("*"):
+
+                    # Hapus simbol bullet asli di depan
+                    clean_line = line.lstrip("*• ").strip()
+
+                    elements.append(Paragraph(f"• {clean_line}", body_style))
+
+                # =============================
+                # NUMBERED LIST (1. 2. 3.)
+                # =============================
+                elif line[0].isdigit() and "." in line:
+                    elements.append(Paragraph(f"<b>{line}</b>", subheading_style))
+
+                # =============================
+                # HEADING (jika satu baris full bold)
+                # =============================
+                elif line.startswith("<b>") and line.endswith("</b>"):
+                    elements.append(Paragraph(line, heading_style))
+
+                # =============================
+                # NORMAL TEXT
+                # =============================
+                else:
+                    elements.append(Paragraph(line, body_style))
+
+                elements.append(Spacer(1, 0.1 * inch))
+
+            # ===== BUILD DOCUMENT =====
+
+            doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
             st.download_button(
                 "📥 Download PDF",
                 data=buffer.getvalue(),
-                file_name="laporan_ayam_layer.pdf",
+                file_name="laporan_ayam_layer_profesional.pdf",
                 mime="application/pdf"
             )
 
     else:
-
         st.warning("Database kosong.")
